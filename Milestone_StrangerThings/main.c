@@ -1,33 +1,82 @@
-#include <msp430.h> 
+#include <msp430.h>
 
 
-/**
- * main.c
- */
+unsigned int RxCount = 0;					// Keeps track of how many bytes have been received
+unsigned int nBytes = 0;					// Stores number of bytes in current packet
+
 int main(void)
 {
-	WDTCTL = WDTPW | WDTHOLD;	// stop watchdog timer
-	
-	P1SEL |= BIT1 | BIT2; 		// Select UART on P1.1 and P1.2
-	P1SEL2 |= BIT1 | BIT2;		// P1.1 = RX; P1.2 = TX
+    WDTCTL = WDTPW | WDTHOLD;               // Stop Watchdog
 
-	// For debug only
-	P1DIR |= BIT6;
-	P1OUT &= ~BIT6;
+    // Configure GPIO
+    P2SEL0 &= ~(BIT0 | BIT1);
+    P2SEL1 |= BIT0 | BIT1;                  // USCI_A0 UART operation
 
-	UCA0CTL1 |= UCSSEL_2;
-	UCA0BR0 = 104;				// Setting up clock dividers to
-	UCA0BR1 = 0;				// achieve 9600 baud rate
-	UCA0MCTL |= UCBRS0;			// Modulation UCBRSx = 1 (from datasheet)
-	UCA0CTL1 &= ~UCSWRST;		// Initialize USCI state machine
-	UC0IE |= UCA0RXIE;			// Enable receive (Rx) interrupt
+    // Disable the GPIO power-on default high-impedance mode to activate
+    // previously configured port settings
+    PM5CTL0 &= ~LOCKLPM5;
 
-	__BIS_SR(LPM1 + GIE);
+    // Startup clock system with max DCO setting ~8MHz
+    CSCTL0_H = CSKEY_H;                     // Unlock CS registers
+    CSCTL1 = DCOFSEL_3 | DCORSEL;           // Set DCO to 8MHz
+    CSCTL2 = SELA__VLOCLK | SELS__DCOCLK | SELM__DCOCLK;
+    CSCTL3 = DIVA__1 | DIVS__1 | DIVM__1;   // Set all dividers
+    CSCTL0_H = 0;                           // Lock CS registers
 
-	return 0;
+    // Configure USCI_A0 for UART mode
+    UCA0CTLW0 = UCSWRST;                    // Put eUSCI in reset
+    UCA0CTLW0 |= UCSSEL__SMCLK;             // CLK = SMCLK
+    // Baud Rate calculation
+    // 8000000/(16*9600) = 52.083
+    // Fractional portion = 0.083
+    // User's Guide Table 21-4: UCBRSx = 0x04
+    // UCBRFx = int ( (52.083-52)*16) = 1
+    UCA0BRW = 52;                           // 8000000/16/9600
+    UCA0MCTLW |= UCOS16 | UCBRF_1 | 0x4900;
+    UCA0CTLW0 &= ~UCSWRST;                  // Initialize eUSCI
+    UCA0IE |= UCRXIE;                       // Enable USCI_A0 RX interrupt
+
+    __bis_SR_register(LPM3_bits | GIE);     // Enter LPM3, interrupts enabled
+    __no_operation();                       // For debugger
 }
 
-#pragma vector = USCIABORX_VECTOR
-__interrupt void USCIORX_ISR(void) {
-	P1OIT ^= BIT6;
+
+#pragma vector=EUSCI_A0_VECTOR
+__interrupt void USCI_A0_ISR(void)
+{
+	//RxCount = 0;
+
+    switch(__even_in_range(UCA0IV, USCI_UART_UCTXCPTIFG))
+    {
+        case USCI_NONE: break;
+        case USCI_UART_UCRXIFG:
+            while(!(UCA0IFG & UCTXIFG));
+            	if (RxCount == 0 ) {
+            		nBytes = UCA0RXBUF;
+            		UCA0TXBUF = nBytes - 3;
+            		RxCount ++;
+            	}
+            	else if (RxCount == 1) {	// Red info
+            		RxCount ++;
+            	}
+
+            	else if (RxCount == 2) {	// Green info
+            		RxCount ++;
+            	}
+            	else if (RxCount == 3) {	// Blue info
+            		RxCount ++;
+            	}
+            	else if (RxCount > 2) {		// Pass these along
+            		UCA0TXBUF = UCA0RXBUF;
+            		RxCount ++;
+            		if (RxCount == nBytes)	// EOM
+            			RxCount = 0;
+            	}
+            __no_operation();
+            break;
+        case USCI_UART_UCTXIFG: break;
+        case USCI_UART_UCSTTIFG: break;
+        case USCI_UART_UCTXCPTIFG: break;
+        default: break;
+    }
 }
