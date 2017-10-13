@@ -12,7 +12,7 @@ enum Trigger edge = Rising_Edge;
 float hex2duty(hex)
 {
     float duty;
-    duty = (hex/0xFF)*500;
+    duty = (hex/0xFF)*1000;
     return duty;
 }
 
@@ -31,18 +31,18 @@ int main(void)
     P1OUT |= BUTTON;                  //pull up res
     P1IFG &= ~BUTTON;             // Clear Btn interrupt flag
 
-    TA0CTL |=   TASSEL_2 |ID_1 | MC_3;
+    TA0CTL |=   TASSEL_2 |ID_1 | MC_1;
 
-    TA0CCR0 = 500;              // Set clock period
+    TA0CCR0 = 1000;              // Set clock period
 
-    TA0CCR1 = 0;
-    TA0CCTL1 |= OUTMOD_4;       // Set/Reset mode
+    TA0CCR1 = 250;                 //RED
+    TA0CCTL1 |= OUTMOD_3;       // Set/Reset mode
 
-    TA0CCR2 = 0;
-    TA0CCTL2 |= OUTMOD_4;       // Set/Reset mode
+    TA0CCR2 = 0;                //GREEN
+    TA0CCTL2 |= OUTMOD_3;       // Set/Reset mode
 
-    TA0CCR3 = 0;
-    TA0CCTL3 |= OUTMOD_4;       // Set/Reset mode
+    TA0CCR3 = 1000;                //BLUE
+    TA0CCTL3 |= OUTMOD_3;       // Set/Reset mode
 
     _BIS_SR(LPM0_bits+GIE);
 
@@ -55,16 +55,13 @@ int main(void)
 __interrupt void PORT_1(void)
 
 {
-        TA0CCR1 += 50;
-        TA0CCR2 += 50;
-        TA0CCR3 += 50;
-        if (TA0CCR1 == 550)
-            TA0CCR1 = 0;
+        TA0CCR1 += 100;
+        TA0CCR2 += 100;
+        TA0CCR3 += 100;
 
-        if (TA0CCR2 == 550)
-            TA0CCR2 = 0;
+        if (TA0CCR1 == 1100) TA0CCR1 = 0;
+        if (TA0CCR2 == 1100) TA0CCR2 = 0;
+        if (TA0CCR3 == 1100) TA0CCR3 = 0;
 
-        if (TA0CCR3 == 550)
-            TA0CCR3 = 0;
     P1IFG &= ~BUTTON;
 }
